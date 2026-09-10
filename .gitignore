@@ -1,0 +1,11 @@
+# database files copied out of the containers
+*.duckdb
+*.duckdb.wal
+*.sqlite
+*.sqlite-journal
+*.db
+
+# example query output
+roster.csv
+roster.parquet
+student.csv

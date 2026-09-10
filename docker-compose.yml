@@ -1,0 +1,84 @@
+name: dbcourse
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dbcourse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: student
+      POSTGRES_PASSWORD: student
+      POSTGRES_DB: university
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # *.sql here run once, in filename order, on first boot (empty data dir)
+      - ./init/postgres:/docker-entrypoint-initdb.d:ro
+      - ./examples:/examples:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U student -d university"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mysql:
+    image: mysql:8.4
+    container_name: dbcourse-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: university
+      MYSQL_USER: student
+      MYSQL_PASSWORD: student
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysqldata:/var/lib/mysql
+      - ./init/mysql:/docker-entrypoint-initdb.d:ro
+      - ./examples:/examples:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ustudent", "-pstudent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # DuckDB and SQLite are EMBEDDED engines - no server, no port.
+  # These containers just keep a shell alive around the database file.
+  duckdb:
+    build:
+      context: ./images/duckdb
+    image: dbcourse/duckdb:1.1.3
+    container_name: dbcourse-duckdb
+    restart: unless-stopped
+    environment:
+      DUCKDB_DATABASE: /data/university.duckdb
+      DUCKDB_INIT_SQL: /init/init.sql
+    volumes:
+      - duckdbdata:/data
+      - ./init/duckdb:/init:ro
+      - ./examples:/examples:ro
+    stdin_open: true
+    tty: true
+
+  sqlite:
+    build:
+      context: ./images/sqlite
+    image: dbcourse/sqlite:3
+    container_name: dbcourse-sqlite
+    restart: unless-stopped
+    environment:
+      SQLITE_DATABASE: /data/university.sqlite
+      SQLITE_INIT_SQL: /init/init.sql
+    volumes:
+      - sqlitedata:/data
+      - ./init/sqlite:/init:ro
+      - ./examples:/examples:ro
+    stdin_open: true
+    tty: true
+
+volumes:
+  pgdata:
+  mysqldata:
+  duckdbdata:
+  sqlitedata:

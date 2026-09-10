@@ -1,0 +1,6 @@
+# Files are consumed inside Linux containers - keep LF in the repo and on checkout.
+* text=auto eol=lf
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.sql       text eol=lf
+*.yml       text eol=lf
