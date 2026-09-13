@@ -37,6 +37,14 @@ SELECT CURRENT_DATE                                AS today,
        EXTRACT(YEAR FROM NOW())                    AS yr,
        NOW() - INTERVAL '7 days'                   AS a_week_ago;
 
+-- 6b. Days since the beginning of the year.
+--     EXTRACT(DOY ...) is the 1-based day NUMBER; subtracting Jan 1 gives the
+--     number of days ELAPSED, which is always one less.
+SELECT CURRENT_DATE                                            AS today,
+       DATE_TRUNC('year', CURRENT_DATE)::date                  AS jan_1,
+       EXTRACT(DOY FROM CURRENT_DATE)::int                     AS day_of_year,
+       CURRENT_DATE - DATE_TRUNC('year', CURRENT_DATE)::date   AS days_elapsed;
+
 -- 7. ORDER BY + LIMIT: top 2 by GPA
 SELECT name, gpa FROM student ORDER BY gpa DESC, name ASC LIMIT 2;
 

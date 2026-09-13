@@ -49,6 +49,16 @@ SELECT DATE('now')                AS today,
        STRFTIME('%Y', 'now')      AS yr,
        DATE('now', '-7 days')     AS a_week_ago;
 
+-- 6b. Days since the beginning of the year.
+--     STRFTIME('%j') returns a zero-padded STRING ('257'), so cast it.
+--     JULIANDAY() converts to a floating-point day count, which subtracts
+--     cleanly; 'start of day' strips the time so the result is a whole number.
+SELECT DATE('now')                                AS today,
+       DATE('now', 'start of year')               AS jan_1,
+       CAST(STRFTIME('%j', 'now') AS INT)         AS day_of_year,
+       CAST(JULIANDAY('now', 'start of day')
+            - JULIANDAY('now', 'start of year') AS INT) AS days_elapsed;
+
 -- 7. ORDER BY + LIMIT
 SELECT name, gpa FROM student ORDER BY gpa DESC, name ASC LIMIT 2;
 

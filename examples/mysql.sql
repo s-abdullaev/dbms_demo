@@ -43,6 +43,15 @@ SELECT CURDATE()                          AS today,
        YEAR(NOW())                        AS yr,
        DATE_SUB(NOW(), INTERVAL 7 DAY)    AS a_week_ago;
 
+-- 6b. Days since the beginning of the year.
+--     DAYOFYEAR() is the 1-based day NUMBER; DATEDIFF() from Jan 1 gives the
+--     number of days ELAPSED, which is always one less.
+--     MAKEDATE(year, 1) is MySQL's way of spelling "January 1st of that year".
+SELECT CURDATE()                                           AS today,
+       MAKEDATE(YEAR(CURDATE()), 1)                        AS jan_1,
+       DAYOFYEAR(CURDATE())                                AS day_of_year,
+       DATEDIFF(CURDATE(), MAKEDATE(YEAR(CURDATE()), 1))   AS days_elapsed;
+
 -- 7. ORDER BY + LIMIT
 SELECT name, gpa FROM student ORDER BY gpa DESC, name ASC LIMIT 2;
 

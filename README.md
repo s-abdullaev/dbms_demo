@@ -300,7 +300,35 @@ ORDER BY e.cid, gpa_rank;
 Window functions need Postgres 8.4+, MySQL 8.0+, SQLite 3.25+, any DuckDB — all four images
 qualify. Same for `WITH RECURSIVE`.
 
-### 6.2 PostgreSQL — `examples/postgres.sql`
+### 6.2 Days since the beginning of the year
+
+Section `6b` of every script. A good small exercise in how differently the four engines model
+dates, and in a distinction worth being precise about: the **day number** within the year is
+1-based (Jan 1 is day 1), while **days elapsed** since Jan 1 is one less.
+
+```sql
+-- PostgreSQL
+SELECT EXTRACT(DOY FROM CURRENT_DATE)::int                   AS day_of_year,
+       CURRENT_DATE - DATE_TRUNC('year', CURRENT_DATE)::date AS days_elapsed;
+
+-- MySQL  (MAKEDATE(year, 1) spells "January 1st of that year")
+SELECT DAYOFYEAR(CURDATE())                              AS day_of_year,
+       DATEDIFF(CURDATE(), MAKEDATE(YEAR(CURDATE()), 1)) AS days_elapsed;
+
+-- SQLite  (STRFTIME returns a zero-padded string, so cast it)
+SELECT CAST(STRFTIME('%j', 'now') AS INT) AS day_of_year,
+       CAST(JULIANDAY('now', 'start of day')
+            - JULIANDAY('now', 'start of year') AS INT) AS days_elapsed;
+
+-- DuckDB
+SELECT DAYOFYEAR(CURRENT_DATE)                                        AS day_of_year,
+       DATE_DIFF('day', DATE_TRUNC('year', CURRENT_DATE), CURRENT_DATE) AS days_elapsed;
+```
+
+All four give the same answer — on 2026-09-13, `day_of_year = 256` and `days_elapsed = 255`.
+Leap years need no special handling in any of them; the arithmetic is calendar-aware.
+
+### 6.3 PostgreSQL — `examples/postgres.sql`
 
 ```bash
 docker compose exec -T postgres psql -U student -d university -f /examples/postgres.sql
@@ -318,7 +346,7 @@ EXPLAIN ANALYZE SELECT * FROM enrolled WHERE cid = '15-445';
 Standard `||` concatenation, `EXTRACT(YEAR FROM NOW())`, `NOW() - INTERVAL '7 days'`, and
 `>= ALL (subquery)` all work as written in the standard.
 
-### 6.3 MySQL — `examples/mysql.sql`
+### 6.4 MySQL — `examples/mysql.sql`
 
 ```bash
 docker compose exec -T mysql mysql -ustudent -pstudent university -e "SOURCE /examples/mysql.sql"
@@ -339,7 +367,7 @@ docker compose exec -T mysql mysql -ustudent -pstudent university -e "SHOW CREAT
 MySQL's own flavour: `GROUP_CONCAT(... ORDER BY ... SEPARATOR ', ')`,
 `DATE_SUB(NOW(), INTERVAL 7 DAY)`, and `information_schema.REFERENTIAL_CONSTRAINTS`.
 
-### 6.4 DuckDB — `examples/duckdb.sql`
+### 6.5 DuckDB — `examples/duckdb.sql`
 
 ```bash
 docker compose exec -T duckdb duckdb /data/university.duckdb ".read /examples/duckdb.sql"
@@ -366,7 +394,7 @@ SELECT * FROM read_csv('/data/student.csv');
 
 Note `INTERVAL 7 DAY` (unquoted) rather than Postgres's `INTERVAL '7 days'`.
 
-### 6.5 SQLite — `examples/sqlite.sql`
+### 6.6 SQLite — `examples/sqlite.sql`
 
 ```bash
 docker compose exec -T sqlite sqlite3 /data/university.sqlite ".read /examples/sqlite.sql"
@@ -407,6 +435,8 @@ SELECT s.name, e.cid, e.grade FROM student s JOIN enrolled e ON e.sid = s.sid;
 | Current timestamp | `NOW()` | `NOW()` | `DATETIME('now')` | `NOW()` |
 | Extract year | `EXTRACT(YEAR FROM ts)` | `YEAR(ts)` | `STRFTIME('%Y', ts)` | `EXTRACT(YEAR FROM ts)` |
 | 7 days ago | `NOW() - INTERVAL '7 days'` | `DATE_SUB(NOW(), INTERVAL 7 DAY)` | `DATE('now','-7 days')` | `NOW() - INTERVAL 7 DAY` |
+| Day of year (1-based) | `EXTRACT(DOY FROM d)` | `DAYOFYEAR(d)` | `CAST(STRFTIME('%j', d) AS INT)` | `DAYOFYEAR(d)` |
+| Days elapsed since Jan 1 | `d - DATE_TRUNC('year', d)::date` | `DATEDIFF(d, MAKEDATE(YEAR(d),1))` | `JULIANDAY(d) - JULIANDAY(d,'start of year')` | `DATE_DIFF('day', DATE_TRUNC('year', d), d)` |
 | String aggregate | `string_agg(x, ', ')` | `GROUP_CONCAT(x SEPARATOR ', ')` | `GROUP_CONCAT(x, ', ')` | `string_agg(x, ', ')` |
 | List tables | `\dt` | `SHOW TABLES;` | `.tables` | `SHOW TABLES;` |
 | Describe table | `\d student` | `DESCRIBE student;` | `PRAGMA table_info(student);` | `DESCRIBE student;` |
