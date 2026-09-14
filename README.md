@@ -328,7 +328,100 @@ SELECT DAYOFYEAR(CURRENT_DATE)                                        AS day_of_
 All four give the same answer — on 2026-09-13, `day_of_year = 256` and `days_elapsed = 255`.
 Leap years need no special handling in any of them; the arithmetic is calendar-aware.
 
-### 6.3 PostgreSQL — `examples/postgres.sql`
+### 6.3 Nested queries, LATERAL joins and CTEs (slides 28–39)
+
+Sections `8b`–`8e` and `10b` of every script — the three ways the lecture builds a query out
+of other queries.
+
+**Where a nested query may go** (slide 28) — almost anywhere: `WHERE`, the `SELECT` list, `FROM`,
+even `ORDER BY`. A subquery that mentions a column from the outer query is *correlated*, and
+re-runs once per outer row:
+
+```sql
+SELECT e.sid,
+       (SELECT s.name FROM student AS s WHERE s.sid = e.sid) AS name,
+       e.cid, e.grade
+FROM enrolled AS e;
+```
+
+**`IN` / `ANY` / `ALL` / `EXISTS`** (slides 29–31, 34). `IN` is exactly `= ANY`; `ALL` requires
+the comparison to hold for every inner row; `EXISTS` only asks whether the inner query returned
+anything at all, and never compares its rows to the outer query. `NOT EXISTS` answers the
+lecture's "courses with nobody enrolled" — `15-799`:
+
+```sql
+SELECT * FROM course
+ WHERE NOT EXISTS (SELECT 1 FROM enrolled WHERE enrolled.cid = course.cid);
+```
+
+SQLite has no `ANY`/`ALL` at all, so its script rewrites `= ANY` as `IN` and `>= ALL` as a
+comparison against `MAX()`.
+
+**The SQL-92 trap** (slide 32). Mixing a bare column with an aggregate is rejected by three of
+the four — verified messages, not paraphrases:
+
+| | `SELECT MAX(e.sid), s.name FROM enrolled e, student s WHERE e.sid = s.sid` |
+|---|---|
+| Postgres | `ERROR: column "s.name" must appear in the GROUP BY clause…` |
+| MySQL | `ERROR 1140 … incompatible with sql_mode=only_full_group_by` |
+| DuckDB | `Binder Error: column "name" must appear in the GROUP BY clause…` |
+| SQLite | **runs**, returns `53688 / Bieber` |
+
+SQLite is not being sloppy by accident: with a *bare* `MIN()` or `MAX()` it documents that the
+other columns come from the row that produced the extreme value. That guarantee covers no other
+aggregate, so the portable form is the scalar subquery from slide 33:
+
+```sql
+SELECT sid, name FROM student WHERE sid = (SELECT MAX(sid) FROM enrolled);
+```
+
+**`LATERAL`** (slides 35–36) lets a `FROM` subquery reference entries listed before it — a
+for-loop over the outer table. Postgres, MySQL and DuckDB support it; SQLite has no such
+keyword and its script uses correlated scalar subqueries instead.
+
+```sql
+SELECT * FROM course AS c,
+    LATERAL (SELECT COUNT(*) AS cnt FROM enrolled WHERE enrolled.cid = c.cid) AS t1,
+    LATERAL (SELECT AVG(s.gpa) AS avg FROM student AS s
+               JOIN enrolled AS e ON s.sid = e.sid WHERE e.cid = c.cid) AS t2
+ORDER BY cnt DESC;
+```
+
+```
+  cid   |            name             | cnt | avg
+--------+-----------------------------+-----+------
+ 15-445 | Database Systems            |   2 | 3.75
+ 15-721 | Advanced Database Systems   |   2 | 3.95
+ 15-826 | Data Mining                 |   2 |  3.8
+ 15-799 | Special Topics in Databases |   0 |
+```
+
+`15-799` survives with `cnt = 0` and `avg = NULL` — the LATERAL blocks still run for it, and an
+aggregate over no rows is `0` for `COUNT` and `NULL` for `AVG`. An inner join to `enrolled`
+would have dropped the course entirely.
+
+**CTEs** (slides 37–39) name a temporary result for the duration of one statement, with an
+optional column alias list:
+
+```sql
+WITH cteSource (maxId) AS (
+    SELECT MAX(sid) FROM enrolled
+)
+SELECT name FROM student, cteSource WHERE student.sid = cteSource.maxId;
+```
+
+Duplicate names in that alias list behave differently in all four engines, which is worth
+demonstrating rather than asserting — SQLite is the one to watch, since it silently answers
+`2` instead of raising anything:
+
+| | `WITH cteName (colXXX, colXXX) AS (SELECT 1, 2)` |
+|---|---|
+| Postgres | definition is fine; referencing it → `column reference "colxxx" is ambiguous` |
+| MySQL | definition rejected → `ERROR 1060: Duplicate column name 'colXXX'` |
+| SQLite | accepted; `colXXX + colXXX` silently resolves to the first column → `2` |
+| DuckDB | accepted; second column renamed to `colXXX_1` |
+
+### 6.4 PostgreSQL — `examples/postgres.sql`
 
 ```bash
 docker compose exec -T postgres psql -U student -d university -f /examples/postgres.sql
@@ -346,7 +439,7 @@ EXPLAIN ANALYZE SELECT * FROM enrolled WHERE cid = '15-445';
 Standard `||` concatenation, `EXTRACT(YEAR FROM NOW())`, `NOW() - INTERVAL '7 days'`, and
 `>= ALL (subquery)` all work as written in the standard.
 
-### 6.4 MySQL — `examples/mysql.sql`
+### 6.5 MySQL — `examples/mysql.sql`
 
 ```bash
 docker compose exec -T mysql mysql -ustudent -pstudent university -e "SOURCE /examples/mysql.sql"
@@ -367,7 +460,7 @@ docker compose exec -T mysql mysql -ustudent -pstudent university -e "SHOW CREAT
 MySQL's own flavour: `GROUP_CONCAT(... ORDER BY ... SEPARATOR ', ')`,
 `DATE_SUB(NOW(), INTERVAL 7 DAY)`, and `information_schema.REFERENTIAL_CONSTRAINTS`.
 
-### 6.5 DuckDB — `examples/duckdb.sql`
+### 6.6 DuckDB — `examples/duckdb.sql`
 
 ```bash
 docker compose exec -T duckdb duckdb /data/university.duckdb ".read /examples/duckdb.sql"
@@ -394,7 +487,7 @@ SELECT * FROM read_csv('/data/student.csv');
 
 Note `INTERVAL 7 DAY` (unquoted) rather than Postgres's `INTERVAL '7 days'`.
 
-### 6.6 SQLite — `examples/sqlite.sql`
+### 6.7 SQLite — `examples/sqlite.sql`
 
 ```bash
 docker compose exec -T sqlite sqlite3 /data/university.sqlite ".read /examples/sqlite.sql"
@@ -443,6 +536,8 @@ SELECT s.name, e.cid, e.grade FROM student s JOIN enrolled e ON e.sid = s.sid;
 | Query plan | `EXPLAIN ANALYZE` | `EXPLAIN ANALYZE` | `EXPLAIN QUERY PLAN` | `EXPLAIN ANALYZE` |
 | FK enforced by default | yes | yes (table-level clause required) | **no** — needs `PRAGMA foreign_keys=ON` | yes |
 | Quantified subquery `ALL`/`ANY` | yes | yes | no | yes |
+| `LATERAL` join | yes | yes (8.0.14+) | **no** — use correlated scalar subqueries | yes |
+| Duplicate CTE column alias | errors on *reference* | rejects the *definition* | silently uses the first | renames to `colXXX_1` |
 
 ---
 
