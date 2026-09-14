@@ -62,6 +62,39 @@ SELECT DATE('now')                                AS today,
 -- 7. ORDER BY + LIMIT
 SELECT name, gpa FROM student ORDER BY gpa DESC, name ASC LIMIT 2;
 
+-- 7b. ORDER BY details (slide 21).
+--     A sort key can be a column POSITION in the SELECT list: "2" means grade.
+SELECT sid, grade FROM enrolled
+ WHERE cid = '15-721'
+ ORDER BY 2;
+
+--     Several keys, each with its own direction. Ties on the first key are
+--     broken by the second.
+SELECT sid, grade FROM enrolled
+ WHERE cid = '15-445'
+ ORDER BY grade DESC, sid ASC;
+
+-- 7c. Paging (slide 22).
+--     SQLite has NO FETCH FIRST / OFFSET ... ROWS syntax - it is a syntax error.
+--     Use LIMIT count OFFSET skip instead.
+SELECT sid, name FROM student
+ WHERE login LIKE '%@cs'
+ LIMIT 2;
+
+--     Skip the first row, then take two - "rows 2 and 3".
+SELECT sid, name FROM student
+ ORDER BY gpa DESC
+ LIMIT 2 OFFSET 1;
+
+--     No WITH TIES either. Emulate it with RANK(), which gives tied rows the
+--     same number, then filter. Works on all four engines.
+SELECT sid, grade FROM (
+    SELECT sid, grade, RANK() OVER (ORDER BY grade) AS rnk
+    FROM enrolled
+) AS t
+ WHERE rnk <= 3
+ ORDER BY grade, sid;
+
 -- 8. Nested queries
 SELECT name FROM student
 WHERE sid IN (SELECT sid FROM enrolled)
@@ -76,6 +109,24 @@ SELECT e.cid, s.name, s.gpa,
        RANK() OVER (PARTITION BY e.cid ORDER BY s.gpa DESC) AS gpa_rank
 FROM enrolled AS e JOIN student AS s ON s.sid = e.sid
 ORDER BY e.cid, gpa_rank;
+
+-- 9b. ROW_NUMBER() / RANK() / DENSE_RANK() (slides 23-24).
+--     An empty OVER () treats the whole result as ONE window and numbers every
+--     row. With no ORDER BY inside OVER, the numbering follows whatever order
+--     the engine produces - fine for a row counter, not for ranking.
+SELECT sid, cid, grade, ROW_NUMBER() OVER () AS row_num
+FROM enrolled;
+
+--     The three functions differ only in how they treat TIES:
+--       ROW_NUMBER  - always distinct: 1,2,3,4,5,6
+--       RANK        - ties share a number, then it SKIPS: 1,1,3,3,5,5
+--       DENSE_RANK  - ties share a number, no gaps:      1,1,2,2,3,3
+SELECT sid, grade,
+       ROW_NUMBER() OVER (ORDER BY grade, sid) AS rn,
+       RANK()       OVER (ORDER BY grade)      AS rnk,
+       DENSE_RANK() OVER (ORDER BY grade)      AS drnk
+FROM enrolled
+ORDER BY 3;
 
 -- 10. CTE
 WITH course_load AS (

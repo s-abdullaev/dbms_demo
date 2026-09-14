@@ -328,7 +328,68 @@ SELECT DAYOFYEAR(CURRENT_DATE)                                        AS day_of_
 All four give the same answer — on 2026-09-13, `day_of_year = 256` and `days_elapsed = 255`.
 Leap years need no special handling in any of them; the arithmetic is calendar-aware.
 
-### 6.3 PostgreSQL — `examples/postgres.sql`
+### 6.3 Output control and ranking (slides 21–24)
+
+Sections `7b`, `7c` and `9b` of every script.
+
+**`ORDER BY`** takes column *positions* as well as names, and one direction per key:
+
+```sql
+SELECT sid, grade FROM enrolled WHERE cid = '15-721' ORDER BY 2;
+SELECT sid, grade FROM enrolled WHERE cid = '15-445' ORDER BY grade DESC, sid ASC;
+```
+
+**Paging** is where the four split. Postgres and DuckDB accept the SQL-standard
+`OFFSET m ROWS FETCH NEXT n ROWS ONLY`; MySQL and SQLite reject it outright as a syntax
+error and only understand `LIMIT n OFFSET m`.
+
+```sql
+-- Postgres and DuckDB
+SELECT sid, name FROM student ORDER BY gpa DESC OFFSET 1 ROWS FETCH NEXT 2 ROWS ONLY;
+
+-- MySQL and SQLite — same result
+SELECT sid, name FROM student ORDER BY gpa DESC LIMIT 2 OFFSET 1;
+```
+
+`WITH TIES` — keep every row that ties with the last one, so the result may be *longer*
+than the count asked for — exists **only in Postgres** (13+) among these four:
+
+```sql
+SELECT sid, grade FROM enrolled ORDER BY grade OFFSET 1 ROWS FETCH NEXT 2 ROWS WITH TIES;
+```
+
+Portable substitute, verified on all four — `RANK()` hands tied rows the same number, so
+filtering on it keeps the ties:
+
+```sql
+SELECT sid, grade FROM (
+    SELECT sid, grade, RANK() OVER (ORDER BY grade) AS rnk FROM enrolled
+) AS t
+WHERE rnk <= 3
+ORDER BY grade, sid;
+```
+
+DuckDB shortens that with `QUALIFY`, which filters on a window function with no wrapping
+subquery: `... QUALIFY rnk <= 3`.
+
+**Ranking functions.** An empty `OVER ()` makes the whole result one window, so
+`ROW_NUMBER() OVER ()` is just a row counter — with no `ORDER BY` inside `OVER`, the
+numbering follows whatever order the engine happens to produce. The three functions differ
+only in how they handle ties:
+
+| grade | `ROW_NUMBER()` | `RANK()` | `DENSE_RANK()` |
+|---|---|---|---|
+| A | 1 | 1 | 1 |
+| A | 2 | 1 | 1 |
+| B | 3 | 3 | 2 |
+| B | 4 | 3 | 2 |
+| C | 5 | 5 | 3 |
+| C | 6 | 5 | 3 |
+
+`ROW_NUMBER` is always distinct, `RANK` shares a number then skips, `DENSE_RANK` shares
+without gaps. Identical output on all four engines.
+
+### 6.4 PostgreSQL — `examples/postgres.sql`
 
 ```bash
 docker compose exec -T postgres psql -U student -d university -f /examples/postgres.sql
@@ -346,7 +407,7 @@ EXPLAIN ANALYZE SELECT * FROM enrolled WHERE cid = '15-445';
 Standard `||` concatenation, `EXTRACT(YEAR FROM NOW())`, `NOW() - INTERVAL '7 days'`, and
 `>= ALL (subquery)` all work as written in the standard.
 
-### 6.4 MySQL — `examples/mysql.sql`
+### 6.5 MySQL — `examples/mysql.sql`
 
 ```bash
 docker compose exec -T mysql mysql -ustudent -pstudent university -e "SOURCE /examples/mysql.sql"
@@ -367,7 +428,7 @@ docker compose exec -T mysql mysql -ustudent -pstudent university -e "SHOW CREAT
 MySQL's own flavour: `GROUP_CONCAT(... ORDER BY ... SEPARATOR ', ')`,
 `DATE_SUB(NOW(), INTERVAL 7 DAY)`, and `information_schema.REFERENTIAL_CONSTRAINTS`.
 
-### 6.5 DuckDB — `examples/duckdb.sql`
+### 6.6 DuckDB — `examples/duckdb.sql`
 
 ```bash
 docker compose exec -T duckdb duckdb /data/university.duckdb ".read /examples/duckdb.sql"
@@ -394,7 +455,7 @@ SELECT * FROM read_csv('/data/student.csv');
 
 Note `INTERVAL 7 DAY` (unquoted) rather than Postgres's `INTERVAL '7 days'`.
 
-### 6.6 SQLite — `examples/sqlite.sql`
+### 6.7 SQLite — `examples/sqlite.sql`
 
 ```bash
 docker compose exec -T sqlite sqlite3 /data/university.sqlite ".read /examples/sqlite.sql"
@@ -441,6 +502,8 @@ SELECT s.name, e.cid, e.grade FROM student s JOIN enrolled e ON e.sid = s.sid;
 | List tables | `\dt` | `SHOW TABLES;` | `.tables` | `SHOW TABLES;` |
 | Describe table | `\d student` | `DESCRIBE student;` | `PRAGMA table_info(student);` | `DESCRIBE student;` |
 | Query plan | `EXPLAIN ANALYZE` | `EXPLAIN ANALYZE` | `EXPLAIN QUERY PLAN` | `EXPLAIN ANALYZE` |
+| Page through output | `FETCH FIRST n ROWS ONLY` / `LIMIT` | `LIMIT n OFFSET m` only | `LIMIT n OFFSET m` only | `FETCH FIRST n ROWS ONLY` / `LIMIT` |
+| Keep tied rows | `FETCH … WITH TIES` | not supported — use `RANK()` | not supported — use `RANK()` | not supported — use `RANK()` or `QUALIFY` |
 | FK enforced by default | yes | yes (table-level clause required) | **no** — needs `PRAGMA foreign_keys=ON` | yes |
 | Quantified subquery `ALL`/`ANY` | yes | yes | no | yes |
 
