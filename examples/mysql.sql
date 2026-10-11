@@ -50,7 +50,7 @@ SELECT CURDATE()                          AS today,
 SELECT CURDATE()                                           AS today,
        MAKEDATE(YEAR(CURDATE()), 1)                        AS jan_1,
        DAYOFYEAR(CURDATE())                                AS day_of_year,
-       DATEDIFF(CURDATE(), MAKEDATE(YEAR(CURDATE()), 1))   AS days_elapsed;
+       D   AS days_elapsed;
 
 -- 7. ORDER BY + LIMIT
 SELECT name, gpa FROM student ORDER BY gpa DESC, name ASC LIMIT 2;
@@ -79,7 +79,7 @@ ORDER BY e.sid, e.cid;
 SELECT t.cid, t.enrollment
 FROM (SELECT cid, COUNT(*) AS enrollment FROM enrolled GROUP BY cid) AS t
 WHERE t.enrollment > 1;
-
+ATEDIFF(CURDATE(), MAKEDATE(YEAR(CURDATE()), 1))
 --     Even in ORDER BY. This one sorts by a constant, so it changes nothing -
 --     it is here only to show that the position is legal.
 SELECT sid, name FROM student ORDER BY (SELECT MAX(sid) FROM student), sid;

@@ -1,9 +1,9 @@
 -- ============================================================
 -- PostgreSQL examples  (run: \i /examples/postgres.sql)
 -- ============================================================
+\dt
 
 -- 1. Sanity check: what is in the database?
-\dt
 SELECT * FROM student ORDER BY sid;
 SELECT * FROM course ORDER BY cid;
 SELECT * FROM enrolled ORDER BY sid, cid;
@@ -18,6 +18,14 @@ ORDER BY s.name;
 -- 3. Aggregates
 SELECT COUNT(*) AS num_students, AVG(gpa) AS avg_gpa, MAX(age) AS oldest
 FROM student;
+
+
+SELECT AVG(s.gpa) as gpa_avg, e.cid 
+FROM enrolled e
+JOIN student s ON s.sid = e.sid
+GROUP BY e.cid
+HAVING AVG(s.gpa) > 3.9;
+
 
 -- 4. GROUP BY + HAVING: courses with more than one student
 SELECT e.cid, c.name, COUNT(*) AS enrollment
@@ -47,6 +55,14 @@ SELECT CURRENT_DATE                                            AS today,
 
 -- 7. ORDER BY + LIMIT: top 2 by GPA
 SELECT name, gpa FROM student ORDER BY gpa DESC, name ASC LIMIT 2;
+
+SELECT * FROM 
+(SELECT s.name, crs.name, RANK() OVER (PARTITION BY e.cid ORDER BY s.gpa) as rank
+FROM student s 
+JOIN enrolled e ON s.sid=e.sid
+JOIN course crs ON e.cid=crs.cid) as ranking
+WHERE ranking.rank=2;
+
 
 -- 8. Nested queries: students enrolled in at least one course
 SELECT name FROM student
@@ -199,11 +215,26 @@ WITH RECURSIVE counter(n) AS (
 )
 SELECT * FROM counter;
 
--- 12. Postgres specialities
-SELECT generate_series(1, 5) AS gs;                       -- set-returning function
-SELECT json_agg(row_to_json(s)) FROM student AS s;        -- JSON aggregation
-EXPLAIN ANALYZE SELECT * FROM enrolled WHERE cid = '15-445';
+-- 12. Physical storage: row identity (ctid) and page size.
+--     Postgres gives every heap row a physical address in the system column
+--     ctid = (block number, item number inside that block). It is NOT a
+--     stable key: an UPDATE writes a new row version somewhere else and the
+--     ctid changes, and VACUUM may move rows around. Use it to look at the
+--     layout, never to reference a row.
+SELECT ctid, sid, name FROM student ORDER BY ctid;
 
--- 13. Constraints are real: this must FAIL (no student 99999)
---     Uncomment to see the foreign key error.
--- INSERT INTO enrolled (sid, cid, grade) VALUES (99999, '15-445', 'A');
+
+CREATE EXTENSION pg_freespacemap;
+VACUUM student;
+SELECT *, round(100*avail/8192, 2) as "freespace_ratio" FROM pg_freespace('student');
+select pg_relation_filepath('student');
+-- /var/lib/postgresql/data/
+/*
+\d student      -- columns, types, nullability, defaults, indexes, constraints, triggers
+\d+ student     -- adds storage type, compression, stats target, column comments, table size
+\dt+ student    -- table-level summary: owner, size, description
+\di student*    -- indexes (matches by name pattern)
+\dp student     -- access privileges
+*/
+
+SELECT ctid, sid, name FROM student ORDER BY ctid;

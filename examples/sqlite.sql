@@ -228,3 +228,4 @@ SELECT s.name, e.cid, e.grade FROM student s JOIN enrolled e ON e.sid = s.sid;
 -- 13. With PRAGMA foreign_keys=ON this fails; without it, it succeeds.
 --     Uncomment to try.
 -- INSERT INTO enrolled (sid, cid, grade) VALUES (99999, '15-445', 'A');
+SELECT rowid, sid, name, gpa FROM student ORDER BY rowid;

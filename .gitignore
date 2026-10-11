@@ -9,3 +9,9 @@
 roster.csv
 roster.parquet
 student.csv
+
+# O_DIRECT demo data
+bufferpool/data.bin
+bufferpool/odirect_demo
+bufferpool/*
+!bufferpool/*.cpp
